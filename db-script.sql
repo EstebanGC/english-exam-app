@@ -1,46 +1,29 @@
--- 1. Users Table (Students)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS evaluations (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
--- 2. Exams Table (General exam structure)
-CREATE TABLE exams (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(150) NOT NULL,
-    level VARCHAR(2) NOT NULL, -- Example: 'A2', 'B1', 'B2', 'C1'
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 3. Questions Table (An exam has many questions)
-CREATE TABLE questions (
-    id SERIAL PRIMARY KEY,
-    exam_id INT REFERENCES exams(id) ON DELETE CASCADE,
+    external_user_id VARCHAR(100),
+    external_exam_id VARCHAR(100),
+    external_question_id VARCHAR(100),
+    external_response_id VARCHAR(100),
+   
     question_text TEXT NOT NULL,
-    question_type VARCHAR(20) NOT NULL, -- 'audio_speaking', 'text_writing', 'multiple_choice'
-    max_score INT DEFAULT 100 -- Maximum possible score for this question
+    student_answer TEXT NOT NULL,
+    rubric JSONB NOT NULL,
+    max_score INTEGER NOT NULL DEFAULT 100,
+    passing_score INTEGER NOT NULL DEFAULT 60,
+
+    score NUMERIC(5, 2),
+    approved BOOLEAN,
+    feedback TEXT,
+    score_breakdown JSONB,
+    model_used VARCHAR(50),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    evaluated_at TIMESTAMPTZ
 );
 
--- 4. Student Responses Table
-CREATE TABLE student_responses (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users(id) ON DELETE CASCADE,
-    question_id INT REFERENCES questions(id) ON DELETE CASCADE,
-    text_content TEXT, 
-    audio_file_path VARCHAR(255), 
-    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 5. LLM Evaluations Table (Results)
-CREATE TABLE llm_evaluations (
-    id SERIAL PRIMARY KEY,
-    response_id INT REFERENCES student_responses(id) ON DELETE CASCADE,
-    score NUMERIC(5, 2) NOT NULL, 
-    approved BOOLEAN NOT NULL, 
-    feedback TEXT, 
-    model_used VARCHAR(50), 
-    evaluated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- Index for searching external references
+CREATE INDEX IF NOT EXISTS idx_evaluations_external_user_id ON evaluations (external_user_id);
+CREATE INDEX IF NOT EXISTS idx_evaluations_external_exam_id ON evaluations (external_exam_id);
+CREATE INDEX IF NOT EXISTS idx_evaluations_external_question_id ON evaluations (external_question_id);
+CREATE INDEX IF NOT EXISTS idx_evaluations_external_response_id ON evaluations (external_response_id);

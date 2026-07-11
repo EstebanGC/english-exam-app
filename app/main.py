@@ -1,19 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.schemas import UserOut
-from app.utils.config import get_db
-from app.routes import exam_routes
-from app.utils.auth_utils import get_current_user
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+from app.routes import evaluation_routes
 
 app = FastAPI()
 
 # Include routes
-app.include_router(exam_routes.router)
+app.include_router(evaluation_routes.router)
 
-@app.get("/")
+
+@app.get("/", response_class=PlainTextResponse)
 def read_root():
-    return {"message": "Welcome to the English Exam Evaluation API"}
-
-@app.get("/users/me/", response_model=UserOut)
-async def read_users_me(current_user: UserOut = Depends(get_current_user)):
-    return current_user
+    return "Welcome to the English Exam Evaluation API"
