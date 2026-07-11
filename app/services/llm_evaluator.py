@@ -54,7 +54,6 @@ def evaluate_response(question_text: str, student_answer: str, rubric: dict, max
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
-            response_format={"type": "json_object"},
         )
         raw_content = completion.choices[0].message.content
     except Exception as e:

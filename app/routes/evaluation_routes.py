@@ -42,6 +42,7 @@ def evaluate_exam_response(payload: EvaluationRequest, db: Session = Depends(get
         feedback=result["feedback"],
         score_breakdown=result["breakdown"],
         model_used=result["model_used"],
+        created_at=datetime.now(),
         evaluated_at=datetime.now(),
     )
     db.add(db_evaluation)
