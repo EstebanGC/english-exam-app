@@ -15,30 +15,30 @@ MODEL_NAME = os.getenv("LLM_MODEL_NAME")
 
 def build_prompt(question_text: str, student_answer: str, rubric: dict, max_score: int) -> str:
     criteria_lines = "\n".join(
-        f"- {c['name']} (peso maximo: {c['weight']} puntos): {c.get('description', '')}"
+        f"- {c['name']} (max weight: {c['weight']} points): {c.get('description', '')}"
         for c in rubric.get("criteria", [])
     )
-    return f"""Eres un evaluador experto de examenes de ingles como segunda lengua.
+    return f"""You are an expert evaluator of English as a Second Language exams.
 
-PREGUNTA DEL EXAMEN:
+EXAM QUESTION:
 {question_text}
 
-RESPUESTA DEL ESTUDIANTE:
+STUDENT ANSWER:
 {student_answer}
 
-RUBRICA DE EVALUACION (puntaje maximo total: {max_score}):
+EVALUATION RUBRIC (total maximum score: {max_score}):
 {criteria_lines}
 
-INSTRUCCIONES:
-Evalua la respuesta del estudiante segun cada criterio de la rubrica. Para cada criterio, asigna un puntaje entre 0 y el peso maximo de ese criterio. Se objetivo, basandote unicamente en el texto de la respuesta.
+INSTRUCTIONS:
+Evaluate the student's answer according to each criterion in the rubric. For each criterion, assign a score between 0 and that criterion's maximum weight. Be objective, basing your evaluation solely on the text of the answer.
 
-Responde UNICAMENTE con un JSON valido, sin texto adicional ni markdown, con esta estructura exacta:
+Respond ONLY with valid JSON, with no additional text or markdown, using this exact structure:
 
 {{
   "breakdown": [
-    {{"criterion": "nombre_del_criterio", "score": <numero>, "max": <numero>, "comment": "<breve justificacion>"}}
+    {{"criterion": "criterion_name", "score": <number>, "max": <number>, "comment": "<brief justification>"}}
   ],
-  "feedback": "<retroalimentacion general para el estudiante, 2-4 frases>"
+  "feedback": "<overall feedback for the student, 2-4 sentences>"
 }}
 """
 
@@ -50,19 +50,19 @@ def evaluate_response(question_text: str, student_answer: str, rubric: dict, max
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "Eres un evaluador de examenes de ingles. Respondes unicamente en JSON valido."},
+                {"role": "system", "content": "You are an English exam evaluator. You respond only in valid JSON."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
         )
         raw_content = completion.choices[0].message.content
     except Exception as e:
-        raise RuntimeError(f"Error al llamar al LLM: {e}")
+        raise RuntimeError(f"Error calling the LLM: {e}")
 
     try:
         parsed = json.loads(raw_content)
     except json.JSONDecodeError:
-        raise ValueError(f"El LLM no devolvio un JSON valido: {raw_content}")
+        raise ValueError(f"The LLM did not return valid JSON: {raw_content}")
 
     breakdown = parsed.get("breakdown", [])
     total_score = sum(item.get("score", 0) for item in breakdown)
