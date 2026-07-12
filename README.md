@@ -1,36 +1,36 @@
 # English Exam Evaluator
 
-Microservicio construido con **FastAPI** que recibe respuestas de exámenes de inglés (pregunta, respuesta del estudiante y rúbrica de evaluación) y las califica automáticamente usando un LLM, devolviendo un puntaje, un estado de aprobación y retroalimentación detallada por criterio.
+Microservice built with **FastAPI** that receives English exam responses (question, student answer, and grading rubric) and automatically scores them using an LLM, returning a score, an approval status, and detailed feedback per criterion.
 
-Este servicio **no es una plataforma de exámenes completa**: no administra usuarios, exámenes ni preguntas. Su única responsabilidad es recibir los datos necesarios para evaluar una respuesta, calificarla, y guardar un historial de evaluaciones. Los exámenes, preguntas y usuarios viven en un sistema externo que consume esta API.
+This service is **not a full exam platform**: it does not manage users, exams, or questions. Its only responsibility is to receive the data needed to evaluate a response, grade it, and keep a history of evaluations. Exams, questions, and users live in an external system that consumes this API.
 
-## Características
+## Features
 
-- Evaluación automática de respuestas de examen mediante LLM, basada en una rúbrica configurable enviada en cada petición.
-- Cálculo de aprobación (`approved`) determinístico en el backend, no delegado al LLM.
-- Retroalimentación desglosada por criterio de evaluación.
-- Historial de evaluaciones persistido en PostgreSQL (tipos nativos `JSONB` para rúbrica y desglose de resultados).
-- Compatible con cualquier proveedor de LLM que exponga una API compatible con OpenAI: [Groq](https://groq.com), modelos locales servidos con [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com), OpenAI, etc. El proveedor se configura por variables de entorno, sin tocar código.
-- Validación estricta de entradas (longitud mínima/máxima, pesos de rúbrica) para evitar evaluaciones sobre datos vacíos o inválidos.
+- Automatic evaluation of exam responses via LLM, based on a configurable rubric sent with each request.
+- Deterministic approval calculation (`approved`) handled in the backend, not delegated to the LLM.
+- Feedback broken down by evaluation criterion.
+- Evaluation history persisted in PostgreSQL (native `JSONB` types for the rubric and result breakdown).
+- Compatible with any LLM provider that exposes an OpenAI-compatible API: Groq, local models served with LM Studio, Ollama, OpenAI, etc. The provider is configured via environment variables, with no code changes required.
+- Strict input validation (minimum/maximum length, rubric weights) to prevent evaluations on empty or invalid data.
 
-## Stack técnico
+## Tech stack
 
-- **FastAPI** — framework web
+- **FastAPI** — web framework
 - **SQLAlchemy** — ORM
-- **PostgreSQL** — base de datos
-- **Pydantic v2** — validación y schemas
-- **OpenAI SDK** — cliente compatible con cualquier proveedor tipo OpenAI (Groq, LM Studio, etc.)
+- **PostgreSQL** — database
+- **Pydantic v2** — validation and schemas
+- **OpenAI SDK** — client compatible with any OpenAI-style provider
 
-## Requisitos previos
+## Prerequisites
 
 - Python 3.11+
-- PostgreSQL en ejecución
-- Acceso a un proveedor de LLM compatible con la API de OpenAI (API key de Groq, o un modelo corriendo localmente en LM Studio/Ollama)
+- PostgreSQL running
+- Access to an OpenAI-API-compatible LLM provider (a hosted API key, or a model running locally)
 
-## Instalación
+## Installation
 
 ```bash
-git clone <url-del-repositorio>
+git clone <repository-url>
 cd english-evaluator
 
 python -m venv .venv
@@ -40,62 +40,70 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Configuración
+## Configuration
 
-Crea un archivo `.env` en la raíz del proyecto:
+Create a `.env` file in the project root (this file should never be committed to version control):
 
 ```env
-# Base de datos
-DB_USER=tu_usuario
-DB_PASSWORD=tu_password
-DB_HOST=localhost
+# Database
+DB_USER=<your_db_user>
+DB_PASSWORD=<your_db_password>
+DB_HOST=<your_db_host>
 DB_PORT=5432
-DB_NAME=tu_base
+DB_NAME=<your_db_name>
 
-# Proveedor del LLM (compatible con API de OpenAI)
-LLM_BASE_URL=http://localhost:1234/v1
-LLM_API_KEY=not-needed
-LLM_MODEL_NAME=qwen2.5-7b-instruct
+# LLM provider (OpenAI-API-compatible)
+LLM_BASE_URL=<provider_base_url>
+LLM_API_KEY=<your_llm_api_key>
+LLM_MODEL_NAME=<model_identifier>
 ```
 
-Para usar Groq en lugar de un modelo local, cambia:
+Example for a local provider (e.g. LM Studio, default settings):
+
+```env
+LLM_BASE_URL=http://localhost:1234/v1
+LLM_API_KEY=not-needed
+LLM_MODEL_NAME=<model_identifier_as_shown_by_provider>
+```
+
+Example for a hosted provider (e.g. Groq):
 
 ```env
 LLM_BASE_URL=https://api.groq.com/openai/v1
-LLM_API_KEY=tu_groq_api_key
-LLM_MODEL_NAME=llama-3.3-70b-versatile
+LLM_API_KEY=<your_api_key>
+LLM_MODEL_NAME=<model_name>
 ```
 
-## Base de datos
+## Database
 
-Ejecuta el script `db-script.sql` incluido en el repositorio sobre tu base PostgreSQL para crear la tabla `evaluations`:
+Run the `db-script.sql` script included in the repository against your PostgreSQL database to create the `evaluations` table:
 
 ```bash
-psql -U tu_usuario -d tu_base -f db-script.sql
+psql -U <your_db_user> -d <your_db_name> -f db-script.sql
 ```
 
-## Ejecución
+## Running the app
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-La API queda disponible en `http://127.0.0.1:8000`, y la documentación interactiva (Swagger) en `http://127.0.0.1:8000/docs`.
+The API is available at `http://127.0.0.1:8000`, and the interactive documentation (Swagger) at `http://127.0.0.1:8000/docs`.
 
-## Uso
+## Usage
 
 ### `POST /evaluate`
 
-Recibe una respuesta de examen y devuelve su evaluación.
+Receives an exam response and returns its evaluation.
 
 **Request:**
 
 ```json
 {
-  "external_user_id": "user_123",
-  "external_exam_id": "exam_456",
-  "external_question_id": "q_789",
-  "external_response_id": "resp_001",
+  "external_user_id": "<external-user-reference>",
+  "external_exam_id": "<external-exam-reference>",
+  "external_question_id": "<external-question-reference>",
+  "external_response_id": "<external-response-reference>",
   "question_text": "Describe your daily routine using present simple tense.",
   "student_answer": "I wake up at 7 am. I goes to work by bus. After work I cooking dinner.",
   "rubric": {
@@ -116,10 +124,10 @@ Recibe una respuesta de examen y devuelve su evaluación.
 ```json
 {
   "id": 1,
-  "external_user_id": "user_123",
-  "external_exam_id": "exam_456",
-  "external_question_id": "q_789",
-  "external_response_id": "resp_001",
+  "external_user_id": "<external-user-reference>",
+  "external_exam_id": "<external-exam-reference>",
+  "external_question_id": "<external-question-reference>",
+  "external_response_id": "<external-response-reference>",
   "score": 73.0,
   "approved": true,
   "feedback": "Your response is clear and covers a good portion of your daily routine...",
@@ -131,36 +139,36 @@ Recibe una respuesta de examen y devuelve su evaluación.
       "comment": "The student made a grammatical error in 'I goes to work by bus'..."
     }
   ],
-  "model_used": "qwen2.5-7b-instruct",
+  "model_used": "<model_identifier>",
   "evaluated_at": "2026-07-11T15:37:29.213841-05:00"
 }
 ```
 
-## Estructura del proyecto
+## Project structure
 
 ```
 app/
-├── main.py                          # Punto de entrada de la app
-├── models.py                        # Modelos SQLAlchemy
-├── schemas.py                       # Schemas Pydantic (request/response)
+├── main.py                          # Application entry point
+├── models.py                        # SQLAlchemy models
+├── schemas.py                       # Pydantic schemas (request/response)
 ├── routes/
-│   └── evaluation_routes.py         # Endpoint POST /evaluate
+│   └── evaluation_routes.py         # POST /evaluate endpoint
 ├── services/
-│   └── llm_evaluator.py             # Lógica de construcción de prompt y llamada al LLM
+│   └── llm_evaluator.py             # Prompt building and LLM call logic
 └── utils/
-    ├── config.py                    # Conexión a base de datos
+    ├── config.py                    # Database connection
     └── __init__.py
-db-script.sql                        # Script de creación de la tabla evaluations
+db-script.sql                        # evaluations table creation script
 ```
 
-## Notas de diseño
+## Design notes
 
-- El **puntaje de aprobación** (`approved`) se calcula en el backend comparando `score` contra `passing_score`, no se delega la decisión al LLM. Esto mantiene la regla de negocio determinística y auditable.
-- La **rúbrica** viaja en cada petición; este servicio no almacena rúbricas propias, ya que el examen, la pregunta y sus criterios de evaluación son responsabilidad del sistema externo que consume esta API.
-- Los campos `external_*_id` son de referencia/trazabilidad únicamente — no son llaves foráneas reales, ya que apuntan a entidades que viven en otro sistema.
+- The **approval status** (`approved`) is calculated in the backend by comparing `score` against `passing_score`; the decision is not delegated to the LLM. This keeps the business rule deterministic and auditable.
+- The **rubric** travels with each request; this service does not store its own rubrics, since the exam, the question, and its evaluation criteria are the responsibility of the external system consuming this API.
+- The `external_*_id` fields are for reference/traceability only — they are not real foreign keys, since they point to entities that live in another system.
 
-## Próximos pasos
+## Next steps
 
-- Autenticación del endpoint `/evaluate` (API key propia para clientes de esta API).
-- Asociar evaluaciones a una cuenta/cliente de la API.
-- Manejo de errores más granular según el tipo de falla del LLM (timeout, modelo no disponible, respuesta mal formada).
+- Authentication for the `/evaluate` endpoint (a dedicated API key for API clients).
+- Associate evaluations with an account/API client.
+- More granular error handling depending on the type of LLM failure (timeout, model unavailable, malformed response).
