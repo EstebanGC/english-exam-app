@@ -1,16 +1,16 @@
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RubricCriterion(BaseModel):
-    name: str
-    weight: int
+    name: str = Field(..., min_length=1, max_length=100)
+    weight: int = Field(..., gt=0, le=100)
     description: Optional[str] = None
 
 
 class Rubric(BaseModel):
-    criteria: List[RubricCriterion]
+    criteria: List[RubricCriterion] = Field(..., min_length=1)
 
 
 class EvaluationRequest(BaseModel):
@@ -18,11 +18,11 @@ class EvaluationRequest(BaseModel):
     external_exam_id: Optional[str] = None
     external_question_id: Optional[str] = None
     external_response_id: Optional[str] = None
-    question_text: str
-    student_answer: str
+    question_text: str = Field(..., min_length=10, max_length=5000)
+    student_answer: str = Field(..., min_length=10, max_length=10000)
     rubric: Rubric
-    max_score: int = 100
-    passing_score: int = 60
+    max_score: int = Field(default=100, gt=0)
+    passing_score: int = Field(default=60, ge=0)
 
 
 class CriterionResult(BaseModel):
