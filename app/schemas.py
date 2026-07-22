@@ -46,3 +46,22 @@ class EvaluationOut(BaseModel):
     evaluated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class RubricTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = None
+    criteria: List[RubricCriterion] = Field(..., min_length=1)
+    max_score: int = Field(default=100, gt=0)
+    passing_score: int = Field(default=60, ge=0)
+
+
+class RubricTemplateOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    criteria: List[RubricCriterion]
+    max_score: int
+    passing_score: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

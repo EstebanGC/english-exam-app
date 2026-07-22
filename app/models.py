@@ -28,3 +28,15 @@ class Evaluation(Base):
 
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     evaluated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class RubricTemplate(Base):
+    __tablename__ = "rubric_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    criteria = Column(JSONB, nullable=False)
+    max_score = Column(Integer, nullable=False, default=100)
+    passing_score = Column(Integer, nullable=False, default=60)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
