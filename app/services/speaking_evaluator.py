@@ -3,6 +3,8 @@ import os
 import json
 import base64
 from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
 import dashscope
 from dashscope import MultiModalConversation
 from app.services.exam_rubrics import get_rubric, build_rubric_prompt
