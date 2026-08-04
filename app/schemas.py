@@ -13,6 +13,13 @@ class Rubric(BaseModel):
     criteria: List[RubricCriterion] = Field(..., min_length=1)
 
 
+class CriterionResult(BaseModel):
+    criterion: str
+    score: float
+    max: float
+    comment: Optional[str] = None
+
+
 class EvaluationRequest(BaseModel):
     external_user_id: Optional[str] = None
     external_exam_id: Optional[str] = None
@@ -23,13 +30,6 @@ class EvaluationRequest(BaseModel):
     rubric: Rubric
     max_score: int = Field(default=100, gt=0)
     passing_score: int = Field(default=60, ge=0)
-
-
-class CriterionResult(BaseModel):
-    criterion: str
-    score: float
-    max: float
-    comment: Optional[str] = None
 
 
 class EvaluationOut(BaseModel):
@@ -46,6 +46,29 @@ class EvaluationOut(BaseModel):
     evaluated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SpeakingEvaluationOut(BaseModel):
+    id: int
+    external_user_id: Optional[str] = None
+    external_exam_id: Optional[str] = None
+    external_question_id: Optional[str] = None
+    external_response_id: Optional[str] = None
+    exam_type: str
+    question_text: str
+    overall_score: float
+    overall_band: Optional[str] = None
+    cefr_level: Optional[str] = None
+    approved: bool
+    feedback: Optional[str] = None
+    score_breakdown: Optional[List[CriterionResult]] = None
+    transcript: Optional[str] = None
+    priority_improvements: Optional[List[str]] = None
+    model_used: Optional[str] = None
+    evaluated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class RubricTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)

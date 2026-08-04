@@ -1,5 +1,4 @@
-# app/models.py
-from sqlalchemy import Column, Integer, String, Text, NUMERIC, Boolean, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, NUMERIC, Boolean, TIMESTAMP, LargeBinary
 from sqlalchemy.dialects.postgresql import JSONB
 from app.utils.config import Base
 
@@ -40,3 +39,36 @@ class RubricTemplate(Base):
     max_score = Column(Integer, nullable=False, default=100)
     passing_score = Column(Integer, nullable=False, default=60)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class SpeakingEvaluation(Base):
+    __tablename__ = "speaking_evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    external_user_id = Column(String(100), index=True, nullable=True)
+    external_exam_id = Column(String(100), index=True, nullable=True)
+    external_question_id = Column(String(100), index=True, nullable=True)
+    external_response_id = Column(String(100), index=True, nullable=True)
+
+    exam_type = Column(String(20), nullable=False)
+    question_text = Column(Text, nullable=False)
+    audio_data = Column(LargeBinary, nullable=True)
+    audio_mime_type = Column(String(50), nullable=True)
+
+    rubric = Column(JSONB, nullable=False)
+    max_score = Column(NUMERIC(5, 2), nullable=False, default=100)
+    passing_score = Column(NUMERIC(5, 2), nullable=False, default=60)
+
+    overall_score = Column(NUMERIC(5, 2), nullable=True)
+    overall_band = Column(String(10), nullable=True)
+    cefr_level = Column(String(5), nullable=True)
+    approved = Column(Boolean, nullable=True)
+    feedback = Column(Text, nullable=True)
+    score_breakdown = Column(JSONB, nullable=True)
+    transcript = Column(Text, nullable=True)
+    priority_improvements = Column(JSONB, nullable=True)
+    model_used = Column(String(50), nullable=True)
+
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    evaluated_at = Column(TIMESTAMP(timezone=True), nullable=True)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from app.routes import evaluation_routes, rubric_routes
+from app.routes import evaluation_routes, rubric_routes, speaking_routes
 
 app = FastAPI()
 
@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
 app.include_router(evaluation_routes.router)
 app.include_router(rubric_routes.router)
+app.include_router(speaking_routes.router)
 
 
 @app.get("/", response_class=PlainTextResponse)
