@@ -1,16 +1,15 @@
 # app/services/speaking_evaluator.py
 import os
 import json
-import base64
+import tempfile
 from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
-import dashscope
-from dashscope import MultiModalConversation
+import google.generativeai as genai
 from app.services.exam_rubrics import get_rubric, build_rubric_prompt
 
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-DASHSCOPE_MODEL = os.getenv("DASHSCOPE_AUDIO_MODEL", "qwen-audio-asr-flash")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 
 def evaluate_speaking(
@@ -20,10 +19,10 @@ def evaluate_speaking(
     exam_type: str,
     max_score: Optional[float] = None,
 ) -> dict:
-    if not DASHSCOPE_API_KEY:
-        raise RuntimeError("DASHSCOPE_API_KEY environment variable is not set")
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY environment variable is not set")
 
-    dashscope.api_key = DASHSCOPE_API_KEY
+    genai.configure(api_key=GEMINI_API_KEY)
 
     rubric = get_rubric(exam_type)
     if rubric:
@@ -61,49 +60,50 @@ Respond ONLY with valid JSON:
 }}
 """
 
-    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-    audio_data_uri = f"data:{audio_mime_type};base64,{audio_b64}"
+    # Determine file extension from mime type
+    ext_map = {
+        "audio/webm": ".webm",
+        "audio/mp4": ".mp4",
+        "audio/wav": ".wav",
+        "audio/mpeg": ".mp3",
+        "audio/ogg": ".ogg",
+    }
+    ext = ext_map.get(audio_mime_type, ".webm")
 
-    messages = [
-        {
-            "role": "system",
-            "content": [
-                {"text": "You are a certified English Speaking examiner. You respond only in valid JSON."}
-            ],
-        },
-        {
-            "role": "user",
-            "content": [
-                {"audio": audio_data_uri},
-                {"text": prompt},
-            ],
-        },
-    ]
+    # Write to temp file for Gemini upload
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
 
     try:
-        response = MultiModalConversation.call(
-            model=DASHSCOPE_MODEL,
-            messages=messages,
-            timeout=120,
+        # Upload file to Gemini
+        audio_file = genai.upload_file(path=tmp_path, mime_type=audio_mime_type)
+
+        model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL,
+            generation_config={
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
         )
+
+        response = model.generate_content([
+            "You are a certified English Speaking examiner. Respond only in valid JSON.",
+            audio_file,
+            prompt,
+        ])
+
+        raw_text = response.text
+
     except Exception as e:
-        raise RuntimeError(f"DashScope API call failed: {e}")
+        raise RuntimeError(f"Gemini API call failed: {e}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"DashScope returned status {response.status_code}: "
-            f"{getattr(response, 'message', str(response))}"
-        )
-
-    try:
-        content = response.output.choices[0].message.content
-        if isinstance(content, list):
-            raw_text = content[0].get("text", "") if isinstance(content[0], dict) else str(content[0])
-        else:
-            raw_text = str(content)
-    except (AttributeError, IndexError, KeyError, TypeError) as e:
-        raise RuntimeError(f"Unexpected response structure from DashScope: {e}")
-
+    # Parse JSON
     try:
         parsed = json.loads(raw_text)
     except json.JSONDecodeError:
@@ -144,5 +144,5 @@ Respond ONLY with valid JSON:
         "cefr_level": parsed.get("cefr_level", ""),
         "priority_improvements": parsed.get("priority_improvements", []),
         "transcript": parsed.get("transcript", ""),
-        "model_used": DASHSCOPE_MODEL,
+        "model_used": GEMINI_MODEL,
     }
