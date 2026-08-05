@@ -1,148 +1,84 @@
-# app/services/speaking_evaluator.py
 import os
 import json
-import tempfile
-from typing import Optional
-from dotenv import load_dotenv
-load_dotenv()
-import google.generativeai as genai
-from app.services.exam_rubrics import get_rubric, build_rubric_prompt
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+from typing import Dict, Any, List
+from openai import OpenAI
+from app.services.whisper_transcriber import TranscriptionResult
 
 
-def evaluate_speaking(
-    audio_bytes: bytes,
-    audio_mime_type: str,
-    question_text: str,
-    exam_type: str,
-    max_score: Optional[float] = None,
-) -> dict:
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY environment variable is not set")
+class SpeakingEvaluator:
 
-    genai.configure(api_key=GEMINI_API_KEY)
+    def __init__(self):
+        self.client = OpenAI(
+            api_key=os.getenv("LLM_API_KEY"),
+            base_url=os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+        )
+        self.model = os.getenv("LLM_MODEL_NAME", "llama-3.3-70b-versatile")
 
-    rubric = get_rubric(exam_type)
-    if rubric:
-        prompt = build_rubric_prompt(rubric, question_text)
-        effective_max = rubric["max_score"]
-        effective_passing = rubric["passing_score"]
-    else:
-        effective_max = max_score or 100
-        effective_passing = max_score * 0.6 if max_score else 60
-        prompt = f"""You are an expert English Speaking evaluator.
+    def evaluate(self, question: str, transcription: TranscriptionResult, exam_type: str) -> Dict[str, Any]:
+        prompt = self._build_evaluation_prompt(question, transcription, exam_type)
 
-The student was asked: "{question_text}"
-
-Listen to the attached audio recording and evaluate the student's spoken English.
-
-Assess the following dimensions and score each 0-{int(effective_max)}:
-- Pronunciation & Phonetics (accent, stress, intonation, rhythm)
-- Fluency & Coherence (flow, hesitation, linking, discourse markers)
-- Lexical Resource (vocabulary range, precision, collocations)
-- Grammatical Range & Accuracy (structures, errors, complexity)
-- Interactive Communication (turn-taking, responding, expanding)
-
-For each criterion, assign a score and provide a 2-sentence justification referencing specific audio evidence.
-
-Respond ONLY with valid JSON:
-{{
-  "breakdown": [
-    {{"criterion": "name", "score": <number>, "max": <number>, "comment": "..."}}
-  ],
-  "overall_band": <number>,
-  "cefr_level": "<A1/A2/B1/B2/C1/C2>",
-  "feedback": "...",
-  "priority_improvements": ["...", "..."],
-  "transcript": "..."
-}}
-"""
-
-    # Determine file extension from mime type
-    ext_map = {
-        "audio/webm": ".webm",
-        "audio/mp4": ".mp4",
-        "audio/wav": ".wav",
-        "audio/mpeg": ".mp3",
-        "audio/ogg": ".ogg",
-    }
-    ext = ext_map.get(audio_mime_type, ".webm")
-
-    # Write to temp file for Gemini upload
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
-
-    try:
-        # Upload file to Gemini
-        audio_file = genai.upload_file(path=tmp_path, mime_type=audio_mime_type)
-
-        model = genai.GenerativeModel(
-            model_name=GEMINI_MODEL,
-            generation_config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            },
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert IELTS/Cambridge English speaking examiner. "
+                        "You evaluate spoken English responses. You have access to an ASR transcript "
+                        "ENRICHED with fluency markers (pauses, fillers, repetitions, self-corrections). "
+                        "IMPORTANT: This is NOT a perfect phonetic transcript. Infer pronunciation, "
+                        "fluency, intonation, and rhythm based on the PATTERNS in the transcript, "
+                        "not just the words themselves."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=2000,
+            response_format={"type": "json_object"}
         )
 
-        response = model.generate_content([
-            "You are a certified English Speaking examiner. Respond only in valid JSON.",
-            audio_file,
-            prompt,
-        ])
+        content = response.choices[0].message.content
+        result = json.loads(content)
 
-        raw_text = response.text
+        result["transcript"] = transcription.text
+        result["audio_metrics"] = {
+            "duration_seconds": transcription.duration_seconds,
+            "word_count": transcription.word_count,
+            "words_per_minute": transcription.words_per_minute,
+            "fillers_count": transcription.fillers_count,
+            "long_pauses_count": len(transcription.long_pauses),
+            "repetitions_count": len(transcription.repetitions),
+            "self_corrections_count": len(transcription.self_corrections)
+        }
 
-    except Exception as e:
-        raise RuntimeError(f"Gemini API call failed: {e}")
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        return result
 
-    # Parse JSON
-    try:
-        parsed = json.loads(raw_text)
-    except json.JSONDecodeError:
-        import re
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group(1).strip())
-            except json.JSONDecodeError:
-                raise ValueError(f"LLM did not return valid JSON. Raw response:\n{raw_text}")
-        else:
-            raise ValueError(f"LLM did not return valid JSON. Raw response:\n{raw_text}")
+    def _build_evaluation_prompt(self, question, t, exam_type):
+        pause_details = "\n".join(
+            f"  - {p['between']}: {p['duration_seconds']}s gap"
+            for p in t.long_pauses[:10]
+        ) or "  - No significant long pauses detected"
 
-    breakdown = parsed.get("breakdown", [])
-    
-    if breakdown and all("weight" in b for b in breakdown):
-        total_weighted = sum(
-            (item.get("score", 0) / item.get("max", 1)) * item.get("weight", 0)
-            for item in breakdown
-        )
-        total_weight = sum(item.get("weight", 0) for item in breakdown)
-        overall_score = (total_weighted / total_weight) * effective_max if total_weight > 0 else 0
-    else:
-        overall_score = sum(item.get("score", 0) for item in breakdown)
+        rep_details = "\n".join(
+            f"  - '{r['word']}' repeated at {r['at']:.1f}s"
+            for r in t.repetitions[:10]
+        ) or "  - No repetitions detected"
 
-    if exam_type.upper() == "IELTS":
-        overall_score = round(overall_score * 2) / 2
-    else:
-        overall_score = round(overall_score)
+        filler_words = {"um", "uh", "erm", "ah", "like", "you know", "i mean", "sort of", "kind of", "well", "so"}
+        filler_details = "\n".join(
+            f"  - '{f['word']}' at {f['start']:.1f}s"
+            for f in t.words if f.get("word", "").strip().lower().rstrip(",.!?;") in filler_words
+        ) or "  - No fillers detected"
 
-    return {
-        "score": overall_score,
-        "max_score": effective_max,
-        "passing_score": effective_passing,
-        "breakdown": breakdown,
-        "feedback": parsed.get("feedback", ""),
-        "overall_band": parsed.get("overall_band", overall_score),
-        "cefr_level": parsed.get("cefr_level", ""),
-        "priority_improvements": parsed.get("priority_improvements", []),
-        "transcript": parsed.get("transcript", ""),
-        "model_used": GEMINI_MODEL,
-    }
+        prompt = f"""## EXAM CONFIGURATION
+Exam Type: {exam_type}
+Question: {question}
+
+## AUDIO METADATA
+- Duration: {t.duration_seconds:.1f} seconds
+- Word count: {t.word_count}
+- Speaking rate: {t.words_per_minute:.1f} words per minute
+- Language detected: {t.language}
+
+## ENRICHED TRANSCRIPT (with fluency markers)
