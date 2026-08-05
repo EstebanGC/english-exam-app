@@ -5,6 +5,8 @@ from typing import Optional
 from app.utils import get_db
 from app.models import SpeakingEvaluation
 from app.schemas import SpeakingEvaluationOut
+from app.services.whisper_transcriber import WhisperTranscriber
+from app.services.speaking_evaluator import SpeakingEvaluator
 from app.services.speaking_evaluator import evaluate_speaking
 from app.services.exam_rubrics import get_rubric
 import json
