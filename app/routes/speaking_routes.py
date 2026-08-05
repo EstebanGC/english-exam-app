@@ -1,110 +1,96 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+"""
+Rutas para evaluacion de speaking (audio -> Whisper -> LLM -> resultado).
+"""
+import os
+import json
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
 from typing import Optional
-from app.utils import get_db
+
+from app.database import get_db
 from app.models import SpeakingEvaluation
-from app.schemas import SpeakingEvaluationOut
+from app.schemas import SpeakingEvaluationOut, CriterionResult
 from app.services.whisper_transcriber import WhisperTranscriber
 from app.services.speaking_evaluator import SpeakingEvaluator
-from app.services.speaking_evaluator import evaluate_speaking
-from app.services.exam_rubrics import get_rubric
-import json
 
-router = APIRouter()
-
-MAX_AUDIO_BYTES = 20 * 1024 * 1024
+router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
 
 
-@router.post("/evaluate-speaking", response_model=SpeakingEvaluationOut, status_code=status.HTTP_201_CREATED)
-async def evaluate_speaking_response(
-    audio: UploadFile = File(..., description="Audio file of the student's spoken response"),
-    exam_type: str = Form(..., description="KET, FCE, IELTS, or CUSTOM"),
-    question_text: str = Form(..., min_length=10, max_length=5000),
-    external_user_id: Optional[str] = Form(None),
-    external_exam_id: Optional[str] = Form(None),
-    external_question_id: Optional[str] = Form(None),
-    external_response_id: Optional[str] = Form(None),
-    custom_rubric: Optional[str] = Form(None, description="JSON string with criteria (only for CUSTOM)"),
-    max_score: Optional[float] = Form(None),
-    passing_score: Optional[float] = Form(None),
-    db: Session = Depends(get_db),
+@router.post("", response_model=SpeakingEvaluationOut)
+async def evaluate_speaking(
+    audio: UploadFile = File(..., description="Audio file (webm, mp3, wav, etc.)"),
+    question: str = Form(..., description="Exam question/prompt"),
+    exam_type: str = Form(..., description="Exam type: KET, FCE, or IELTS"),
+    student_id: Optional[str] = Form(None, description="Optional student identifier"),
+    db: Session = Depends(get_db)
 ):
-    exam_type_upper = exam_type.upper()
-    if exam_type_upper not in {"KET", "FCE", "IELTS", "CUSTOM"}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="exam_type must be one of: KET, FCE, IELTS, CUSTOM"
-        )
+    exam_type = exam_type.upper().strip()
+    if exam_type not in {"KET", "FCE", "IELTS"}:
+        raise HTTPException(status_code=400, detail="Invalid exam_type. Must be one of: KET, FCE, IELTS")
 
     audio_bytes = await audio.read()
-    if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Audio file exceeds {MAX_AUDIO_BYTES // (1024*1024)} MB limit"
-        )
+    if len(audio_bytes) < 100:
+        raise HTTPException(status_code=400, detail="Audio file too small or empty")
 
-    rubric = get_rubric(exam_type_upper)
-    if rubric:
-        rubric_dict = rubric
-        effective_max = rubric["max_score"]
-        effective_passing = rubric["passing_score"]
-    else:
-        if not custom_rubric:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="custom_rubric is required when exam_type is CUSTOM"
-            )
-        try:
-            rubric_dict = json.loads(custom_rubric)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="custom_rubric must be valid JSON"
-            )
-        effective_max = max_score or 100
-        effective_passing = passing_score or (effective_max * 0.6)
+    max_size = 25 * 1024 * 1024
+    if len(audio_bytes) > max_size:
+        raise HTTPException(status_code=400, detail=f"Audio file too large: {len(audio_bytes)/(1024*1024):.1f}MB. Max: 25MB")
 
     try:
-        result = evaluate_speaking(
-            audio_bytes=audio_bytes,
-            audio_mime_type=audio.content_type or "audio/wav",
-            question_text=question_text,
-            exam_type=exam_type_upper,
-            max_score=effective_max if exam_type_upper == "CUSTOM" else None,
+        transcriber = WhisperTranscriber()
+        transcription = await transcriber.transcribe(audio_bytes, filename=audio.filename)
+
+        if not transcription.text or transcription.text.strip() == "":
+            raise HTTPException(status_code=400, detail="Could not transcribe audio. Please speak clearly and try again.")
+
+        evaluator = SpeakingEvaluator()
+        evaluation = evaluator.evaluate(question=question, transcription=transcription, exam_type=exam_type)
+
+        db_eval = SpeakingEvaluation(
+            student_id=student_id,
+            exam_type=exam_type,
+            question=question,
+            audio_data=audio_bytes,
+            audio_filename=audio.filename,
+            transcript=transcription.text,
+            overall_score=evaluation.get("overall_score", 0),
+            band=evaluation.get("band", ""),
+            cefr_level=evaluation.get("cefr_level", ""),
+            passed=evaluation.get("passed", False),
+            criteria_breakdown=json.dumps(evaluation.get("criteria_breakdown", [])),
+            priority_improvements=json.dumps(evaluation.get("priority_improvements", [])),
+            detailed_feedback=evaluation.get("detailed_feedback", ""),
+            audio_metrics=json.dumps(evaluation.get("audio_metrics", {})),
+            pronunciation_inference=evaluation.get("pronunciation_inference", ""),
+            fluency_notes=evaluation.get("fluency_notes", ""),
+            intonation_notes=evaluation.get("intonation_notes", "")
         )
-    except (RuntimeError, ValueError) as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
-    overall_score = result["score"]
-    approved = overall_score >= result["passing_score"]
+        db.add(db_eval)
+        db.commit()
+        db.refresh(db_eval)
 
-    db_eval = SpeakingEvaluation(
-        external_user_id=external_user_id,
-        external_exam_id=external_exam_id,
-        external_question_id=external_question_id,
-        external_response_id=external_response_id,
-        exam_type=exam_type_upper,
-        question_text=question_text,
-        audio_data=audio_bytes,
-        audio_mime_type=audio.content_type,
-        rubric=rubric_dict,
-        max_score=result["max_score"],
-        passing_score=result["passing_score"],
-        overall_score=overall_score,
-        overall_band=str(result.get("overall_band", overall_score)),
-        cefr_level=result.get("cefr_level", ""),
-        approved=approved,
-        feedback=result.get("feedback", ""),
-        score_breakdown=result.get("breakdown", []),
-        transcript=result.get("transcript", ""),
-        priority_improvements=result.get("priority_improvements", []),
-        model_used=result.get("model_used", ""),
-        created_at=datetime.now(),
-        evaluated_at=datetime.now(),
-    )
-    db.add(db_eval)
-    db.commit()
-    db.refresh(db_eval)
+        return SpeakingEvaluationOut(
+            id=db_eval.id,
+            student_id=db_eval.student_id,
+            exam_type=db_eval.exam_type,
+            question=db_eval.question,
+            transcript=db_eval.transcript,
+            overall_score=db_eval.overall_score,
+            band=db_eval.band,
+            cefr_level=db_eval.cefr_level,
+            passed=db_eval.passed,
+            criteria_breakdown=[CriterionResult(**c) for c in json.loads(db_eval.criteria_breakdown)],
+            priority_improvements=json.loads(db_eval.priority_improvements),
+            detailed_feedback=db_eval.detailed_feedback,
+            audio_metrics=json.loads(db_eval.audio_metrics),
+            pronunciation_inference=db_eval.pronunciation_inference,
+            fluency_notes=db_eval.fluency_notes,
+            intonation_notes=db_eval.intonation_notes,
+            created_at=db_eval.created_at
+        )
 
-    return db_eval
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")

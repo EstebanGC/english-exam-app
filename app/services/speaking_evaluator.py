@@ -6,7 +6,7 @@ from app.services.whisper_transcriber import TranscriptionResult
 
 
 class SpeakingEvaluator:
-
+  
     def __init__(self):
         self.client = OpenAI(
             api_key=os.getenv("LLM_API_KEY"),
