@@ -1,8 +1,14 @@
-from app.database import get_db
-from app.models import SpeakingEvaluation
-from app.schemas import SpeakingEvaluationOut, CriterionResult
-from app.services.whisper_transcriber import WhisperTranscriber
-from app.services.speaking_evaluator import SpeakingEvaluator
+import os
+import json
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from ..database import get_db
+from ..models import SpeakingEvaluation
+from ..schemas import SpeakingEvaluationOut, CriterionResult
+from ..services.whisper_transcriber import WhisperTranscriber
+from ..services.speaking_evaluator import SpeakingEvaluator
 
 router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
 

@@ -2,7 +2,7 @@ import os
 import json
 from typing import Dict, Any, List
 from openai import OpenAI
-from app.services.whisper_transcriber import TranscriptionResult
+from .whisper_transcriber import TranscriptionResult
 
 
 class SpeakingEvaluator:
