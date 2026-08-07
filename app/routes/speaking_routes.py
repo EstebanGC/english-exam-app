@@ -50,7 +50,6 @@ async def evaluate_speaking(
         evaluator = SpeakingEvaluator()
         evaluation = evaluator.evaluate(question=question, transcription=transcription, exam_type=exam_type)
 
-        # Normalizar criteria_breakdown (el LLM a veces devuelve 'max' en vez de 'max_score')
         raw_breakdown = evaluation.get("criteria_breakdown", [])
         normalized_breakdown = [_normalize_criterion(c) for c in raw_breakdown]
 
