@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, NUMERIC, Boolean, TIMESTAMP, LargeBinary
+from sqlalchemy import Column, Integer, String, Text, NUMERIC, Boolean, TIMESTAMP, LargeBinary, Float
+from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 from app.utils.config import Base
 
@@ -54,11 +55,11 @@ class SpeakingEvaluation(Base):
     band = Column(String(50), nullable=True)
     cefr_level = Column(String(10), nullable=True)
     passed = Column(Boolean, default=False)
-    criteria_breakdown = Column(JSON, nullable=True)
-    priority_improvements = Column(JSON, nullable=True)
+    criteria_breakdown = Column(JSONB, nullable=True)
+    priority_improvements = Column(JSONB, nullable=True)
     detailed_feedback = Column(Text, nullable=True)
-    audio_metrics = Column(JSON, nullable=True)
+    audio_metrics = Column(JSONB, nullable=True)
     pronunciation_inference = Column(Text, nullable=True)
     fluency_notes = Column(Text, nullable=True)
     intonation_notes = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())

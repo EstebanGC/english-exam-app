@@ -1,12 +1,3 @@
-"""
-Rutas para evaluacion de speaking (audio -> Whisper -> LLM -> resultado).
-"""
-import os
-import json
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import Optional
-
 from app.database import get_db
 from app.models import SpeakingEvaluation
 from app.schemas import SpeakingEvaluationOut, CriterionResult
