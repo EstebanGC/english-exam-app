@@ -14,9 +14,14 @@ router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
 
 
 def _normalize_criterion(c: dict) -> dict:
-    """Normaliza campos del LLM: max -> max_score si es necesario."""
-    if "max" in c and "max_score" not in c:
-        c["max_score"] = c.pop("max")
+    """Normaliza la respuesta del LLM al esquema interno."""
+
+    if "max_score" in c and "max" not in c:
+        c["max"] = c.pop("max_score")
+
+    if "feedback" in c and "comment" not in c:
+        c["comment"] = c.pop("feedback")
+
     return c
 
 
