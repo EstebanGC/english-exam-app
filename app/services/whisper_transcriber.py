@@ -1,7 +1,3 @@
-"""
-Servicio de transcripcion de audio usando Groq Whisper API.
-Compatible con OpenAI SDK. Devuelve texto + analisis de fluidez.
-"""
 import os
 import tempfile
 from typing import List, Dict, Any
@@ -60,8 +56,13 @@ class WhisperTranscriber:
             os.unlink(tmp_path)
 
         text = response.text or ""
-        words = getattr(response, "words", []) or []
-        segments = getattr(response, "segments", []) or []
+
+        # Convertir objetos Pydantic a diccionarios puros
+        words_raw = getattr(response, "words", []) or []
+        segments_raw = getattr(response, "segments", []) or []
+
+        words = [self._to_dict(w) for w in words_raw]
+        segments = [self._to_dict(s) for s in segments_raw]
 
         duration = self._calculate_duration(words, segments)
         word_count = len(words)
@@ -85,6 +86,16 @@ class WhisperTranscriber:
             words_per_minute=round(wpm, 1),
             language="en"
         )
+
+    def _to_dict(self, obj) -> dict:
+        """Convierte objeto Pydantic/BaseModel a dict."""
+        if isinstance(obj, dict):
+            return obj
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        if hasattr(obj, "dict"):
+            return obj.dict()
+        return {k: getattr(obj, k) for k in dir(obj) if not k.startswith("_") and not callable(getattr(obj, k))}
 
     def _calculate_duration(self, words, segments):
         if words:
