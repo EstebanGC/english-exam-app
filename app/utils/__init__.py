@@ -1,1 +1,1 @@
-from app.database import get_db
+from .config import get_db, Base, engine, SessionLocal
