@@ -13,6 +13,13 @@ from app.services.speaking_evaluator import SpeakingEvaluator
 router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
 
 
+def _normalize_criterion(c: dict) -> dict:
+    """Normaliza campos del LLM: max -> max_score si es necesario."""
+    if "max" in c and "max_score" not in c:
+        c["max_score"] = c.pop("max")
+    return c
+
+
 @router.post("", response_model=SpeakingEvaluationOut)
 async def evaluate_speaking(
     audio: UploadFile = File(..., description="Audio file (webm, mp3, wav, etc.)"),
@@ -43,6 +50,9 @@ async def evaluate_speaking(
         evaluator = SpeakingEvaluator()
         evaluation = evaluator.evaluate(question=question, transcription=transcription, exam_type=exam_type)
 
+        raw_breakdown = evaluation.get("criteria_breakdown", [])
+        normalized_breakdown = [_normalize_criterion(c) for c in raw_breakdown]
+
         db_eval = SpeakingEvaluation(
             student_id=student_id,
             exam_type=exam_type,
@@ -54,7 +64,7 @@ async def evaluate_speaking(
             band=evaluation.get("band", ""),
             cefr_level=evaluation.get("cefr_level", ""),
             passed=evaluation.get("passed", False),
-            criteria_breakdown=json.dumps(evaluation.get("criteria_breakdown", [])),
+            criteria_breakdown=json.dumps(normalized_breakdown),
             priority_improvements=json.dumps(evaluation.get("priority_improvements", [])),
             detailed_feedback=evaluation.get("detailed_feedback", ""),
             audio_metrics=json.dumps(evaluation.get("audio_metrics", {})),
