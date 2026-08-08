@@ -1,174 +1,494 @@
-# English Exam Evaluator
+# English Evaluator — Backend
 
-Microservice built with **FastAPI** that receives English exam responses (question, student answer, and grading rubric) and automatically scores them using an LLM, returning a score, an approval status, and detailed feedback per criterion.
+AI-powered English assessment backend built with **FastAPI, PostgreSQL, SQLAlchemy, Whisper and LLM-based evaluation**.
 
-This service is **not a full exam platform**: it does not manage users, exams, or questions. Its only responsibility is to receive the data needed to evaluate a response, grade it, and keep a history of evaluations. Exams, questions, and users live in an external system that consumes this API.
+> **Product vision:** a reusable evaluation engine for education, recruitment, corporate training and language-assessment platforms.
 
-## Features
+## Overview
 
-- Automatic evaluation of exam responses via LLM, based on a configurable rubric sent with each request.
-- Deterministic approval calculation (`approved`) handled in the backend, not delegated to the LLM.
-- Feedback broken down by evaluation criterion.
-- Evaluation history persisted in PostgreSQL (native `JSONB` types for the rubric and result breakdown).
-- Compatible with any LLM provider that exposes an OpenAI-compatible API: Groq, local models served with LM Studio, Ollama, OpenAI, etc. The provider is configured via environment variables, with no code changes required.
-- Strict input validation (minimum/maximum length, rubric weights) to prevent evaluations on empty or invalid data.
+The backend evaluates written and spoken English responses against configurable rubrics, produces structured scores and feedback, and persists evaluations.
 
-## Tech stack
-
-- **FastAPI** — web framework
-- **SQLAlchemy** — ORM
-- **PostgreSQL** — database
-- **Pydantic v2** — validation and schemas
-- **OpenAI SDK** — client compatible with any OpenAI-style provider
-
-## Prerequisites
-
-- Python 3.11+
-- PostgreSQL running
-- Access to an OpenAI-API-compatible LLM provider (a hosted API key, or a model running locally)
-
-## Installation
-
-```bash
-git clone <repository-url>
-cd english-evaluator
-
-python -m venv .venv
-.venv\Scripts\Activate.ps1    # Windows
-# source .venv/bin/activate   # Linux/Mac
-
-pip install -r requirements.txt
+```text
+                    ┌──────────────────────┐
+                    │      Frontend        │
+                    └──────────┬───────────┘
+                               │ REST
+                               ▼
+                    ┌──────────────────────┐
+                    │       FastAPI        │
+                    └──────────┬───────────┘
+                               │
+               ┌───────────────┼────────────────┐
+               ▼               ▼                ▼
+          Evaluation       Speaking          Rubrics
+               │               │
+               │        ┌──────┴──────┐
+               │        ▼             ▼
+               │     Whisper       Audio metrics
+               │        │             │
+               └────────┴──────┬──────┘
+                               ▼
+                         LLM Evaluator
+                               │
+                               ▼
+                         PostgreSQL
 ```
 
-## Configuration
+## Main capabilities
 
-Create a `.env` file in the project root (this file should never be committed to version control):
+### Written evaluation
 
-```env
-# Database
-DB_USER=<your_db_user>
-DB_PASSWORD=<your_db_password>
-DB_HOST=<your_db_host>
-DB_PORT=5432
-DB_NAME=<your_db_name>
+Evaluates an English response against a rubric and returns criterion-level scores, feedback and an overall result.
 
-# LLM provider (OpenAI-API-compatible)
-LLM_BASE_URL=<provider_base_url>
-LLM_API_KEY=<your_llm_api_key>
-LLM_MODEL_NAME=<model_identifier>
-```
+Typical criteria include:
 
-Example for a local provider (e.g. LM Studio, default settings):
+- Grammar
+- Vocabulary
+- Coherence
+- Task achievement
+- Fluency
+- Custom criteria
 
-```env
-LLM_BASE_URL=http://localhost:1234/v1
-LLM_API_KEY=not-needed
-LLM_MODEL_NAME=<model_identifier_as_shown_by_provider>
-```
+The LLM performs language evaluation, while application code validates the structure and applies deterministic business rules.
 
-Example for a hosted provider (e.g. Groq):
+### Speaking evaluation
 
-```env
-LLM_BASE_URL=https://api.groq.com/openai/v1
-LLM_API_KEY=<your_api_key>
-LLM_MODEL_NAME=<model_name>
-```
+Accepts recorded audio and processes it through a speech-evaluation pipeline:
 
-## Database
+- audio upload
+- Whisper transcription
+- transcript analysis
+- duration
+- word count
+- words per minute
+- filler detection
+- repetition detection
+- self-correction detection
+- long-pause detection
+- rubric-based LLM scoring
+- structured feedback
 
-Run the `db-script.sql` script included in the repository against your PostgreSQL database to create the `evaluations` table:
+The current system uses Whisper as the transcription component.
 
-```bash
-psql -U <your_db_user> -d <your_db_name> -f db-script.sql
-```
+> **Important:** transcript-derived observations about pronunciation, stress and intonation are inferences, not equivalent to dedicated acoustic/prosody analysis. A future production version can add specialized audio models for stronger speaking assessment.
 
-## Running the app
+### Rubric templates
 
-```bash
-uvicorn app.main:app --reload
-```
+The backend supports reusable rubrics and predefined exam-style configurations. The architecture can support:
 
-The API is available at `http://127.0.0.1:8000`, and the interactive documentation (Swagger) at `http://127.0.0.1:8000/docs`.
+- IELTS-style assessments
+- KET-style assessments
+- FCE-style assessments
+- custom organizational rubrics
 
-## Usage
+The engine is therefore not tied to a single examination.
 
-### `POST /evaluate`
-
-Receives an exam response and returns its evaluation.
-
-**Request:**
-
-```json
-{
-  "external_user_id": "<external-user-reference>",
-  "external_exam_id": "<external-exam-reference>",
-  "external_question_id": "<external-question-reference>",
-  "external_response_id": "<external-response-reference>",
-  "question_text": "Describe your daily routine using present simple tense.",
-  "student_answer": "I wake up at 7 am. I goes to work by bus. After work I cooking dinner.",
-  "rubric": {
-    "criteria": [
-      { "name": "grammar", "weight": 25, "description": "Correct use of present simple" },
-      { "name": "vocabulary", "weight": 25, "description": "Range and accuracy of vocabulary" },
-      { "name": "coherence", "weight": 25, "description": "Logical flow of ideas" },
-      { "name": "task_achievement", "weight": 25, "description": "Covers a full daily routine" }
-    ]
-  },
-  "max_score": 100,
-  "passing_score": 60
-}
-```
-
-**Response (`201 Created`):**
-
-```json
-{
-  "id": 1,
-  "external_user_id": "<external-user-reference>",
-  "external_exam_id": "<external-exam-reference>",
-  "external_question_id": "<external-question-reference>",
-  "external_response_id": "<external-response-reference>",
-  "score": 73.0,
-  "approved": true,
-  "feedback": "Your response is clear and covers a good portion of your daily routine...",
-  "score_breakdown": [
-    {
-      "criterion": "grammar",
-      "score": 15.0,
-      "max": 25.0,
-      "comment": "The student made a grammatical error in 'I goes to work by bus'..."
-    }
-  ],
-  "model_used": "<model_identifier>",
-  "evaluated_at": "2026-07-11T15:37:29.213841-05:00"
-}
-```
+---
 
 ## Project structure
 
-```
+```text
 app/
-├── main.py                          # Application entry point
-├── models.py                        # SQLAlchemy models
-├── schemas.py                       # Pydantic schemas (request/response)
 ├── routes/
-│   └── evaluation_routes.py         # POST /evaluate endpoint
+│   ├── evaluation_routes.py
+│   ├── rubric_routes.py
+│   └── speaking_routes.py
+│
 ├── services/
-│   └── llm_evaluator.py             # Prompt building and LLM call logic
-└── utils/
-    ├── config.py                    # Database connection
-    └── __init__.py
-db-script.sql                        # evaluations table creation script
+│   ├── audio_evaluator.py
+│   ├── exam_rubrics.py
+│   ├── llm_evaluator.py
+│   ├── speaking_evaluator.py
+│   └── whisper_transcriber.py
+│
+├── main.py
+├── models.py
+└── schemas.py
+
+db-script.sql
+requirements.txt
+README.md
 ```
 
-## Design notes
+### Routes
 
-- The **approval status** (`approved`) is calculated in the backend by comparing `score` against `passing_score`; the decision is not delegated to the LLM. This keeps the business rule deterministic and auditable.
-- The **rubric** travels with each request; this service does not store its own rubrics, since the exam, the question, and its evaluation criteria are the responsibility of the external system consuming this API.
-- The `external_*_id` fields are for reference/traceability only — they are not real foreign keys, since they point to entities that live in another system.
+- `evaluation_routes.py` — written evaluation API.
+- `speaking_routes.py` — speaking/audio evaluation API.
+- `rubric_routes.py` — rubric template management.
 
-## Next steps
+### Services
 
-- Authentication for the `/evaluate` endpoint (a dedicated API key for API clients).
-- Associate evaluations with an account/API client.
-- More granular error handling depending on the type of LLM failure (timeout, model unavailable, malformed response).
+- `llm_evaluator.py` — prompt construction, LLM invocation and result handling.
+- `speaking_evaluator.py` — speaking evaluation orchestration.
+- `whisper_transcriber.py` — speech-to-text.
+- `audio_evaluator.py` — audio and fluency-related metrics.
+- `exam_rubrics.py` — predefined rubric definitions.
+
+### Core files
+
+- `models.py` — SQLAlchemy database models.
+- `schemas.py` — Pydantic API contracts.
+- `main.py` — FastAPI application entry point.
+
+---
+
+## Written evaluation flow
+
+Conceptually:
+
+```text
+Request
+  ↓
+Validate input
+  ↓
+Build rubric-aware prompt
+  ↓
+LLM evaluation
+  ↓
+Normalize model output
+  ↓
+Validate with Pydantic
+  ↓
+Calculate/validate final score
+  ↓
+Persist evaluation
+  ↓
+Return structured result
+```
+
+Example request shape:
+
+```json
+{
+  "question": "Describe your daily routine.",
+  "response": "I usually wake up at seven...",
+  "rubric": {
+    "criteria": [
+      { "name": "Grammar", "weight": 25 },
+      { "name": "Vocabulary", "weight": 25 }
+    ]
+  }
+}
+```
+
+---
+
+## Speaking evaluation flow
+
+```text
+Browser recording
+      │
+      ▼
+audio/webm
+      │
+      ▼
+FastAPI
+      │
+      ├──► Whisper transcription
+      │
+      ├──► audio metrics
+      │
+      └──► LLM evaluation
+                │
+                ▼
+          rubric criteria
+                │
+                ▼
+         normalized result
+                │
+                ▼
+           PostgreSQL
+```
+
+The speaking result can contain:
+
+- transcript
+- overall score
+- band/proficiency
+- CEFR level
+- criterion breakdown
+- feedback
+- priority improvements
+- audio/fluency metrics
+
+---
+
+## Rubric architecture
+
+Evaluation is **rubric-driven rather than hard-coded to one test**.
+
+A rubric can define:
+
+```text
+Criterion
+Weight
+Description
+Score range
+Evaluation instructions
+```
+
+For example:
+
+```text
+Fluency & Coherence   25%
+Lexical Resource      25%
+Grammar               25%
+Pronunciation         25%
+```
+
+An organization could instead define:
+
+```text
+Customer Support English
+
+Communication        30%
+Vocabulary            20%
+Grammar               20%
+Fluency               20%
+Professional tone    10%
+```
+
+The same evaluation engine can serve both.
+
+---
+
+## LLM output normalization
+
+LLMs can return slightly different field names. The backend normalizes them before Pydantic validation.
+
+For example:
+
+```text
+max_score → max
+feedback  → comment
+```
+
+This provides a stable internal contract.
+
+The LLM should be treated as an evaluation component, **not as the authority over application structure or business rules**.
+
+---
+
+## Database
+
+PostgreSQL stores evaluation information such as:
+
+- exam type
+- question
+- transcript
+- score
+- band
+- CEFR level
+- pass status
+- criterion breakdown
+- feedback
+- improvement suggestions
+- speaking metrics
+- evaluation metadata
+
+SQLAlchemy manages persistence.
+
+The database engine uses connection-health settings:
+
+```python
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
+```
+
+`pool_pre_ping` helps prevent stale pooled connections from causing failures.
+
+### Audio storage
+
+The current MVP can persist audio with an evaluation record. For production, object storage is preferable:
+
+```text
+PostgreSQL
+    └── audio_url
+
+Object Storage
+    └── response.webm
+```
+
+This keeps large multimedia files out of the relational database.
+
+---
+
+## Configuration
+
+Use environment variables for credentials and deployment configuration.
+
+Example:
+
+```env
+DATABASE_URL=
+LLM_API_KEY=
+LLM_BASE_URL=
+LLM_MODEL=
+```
+
+Never commit:
+
+- `.env`
+- database passwords
+- API keys
+- private tokens
+- service credentials
+
+Provide an `.env.example` containing placeholders instead.
+
+---
+
+## LLM provider flexibility
+
+The evaluation layer uses an OpenAI-compatible client pattern, making it possible to work with compatible hosted providers, gateways or local inference servers.
+
+The evaluator should remain provider-agnostic where practical.
+
+---
+
+## API surface
+
+Conceptually:
+
+```text
+/evaluate
+    Written evaluation
+
+/evaluate-speaking
+    Speaking/audio evaluation
+
+/rubrics
+    Rubric template management
+```
+
+Request and response contracts are defined in `schemas.py`.
+
+API consumers should depend on those contracts rather than internal SQLAlchemy models.
+
+---
+
+## Error handling
+
+The API should distinguish between:
+
+- invalid requests
+- unsupported exam types
+- invalid rubrics
+- transcription errors
+- LLM errors
+- malformed LLM output
+- database errors
+- unexpected application errors
+
+Model output must be validated before it is persisted or returned.
+
+---
+
+## Deployment
+
+The backend is suitable for cloud deployment on platforms such as Render or similar Python hosting environments.
+
+Typical workflow:
+
+```text
+git push
+   ↓
+GitHub
+   ↓
+Cloud deployment
+   ↓
+FastAPI
+   ├── PostgreSQL
+   ├── LLM provider
+   └── transcription/audio services
+```
+
+Secrets belong in the deployment platform's environment configuration.
+
+---
+
+# Product positioning
+
+The backend can power:
+
+### Educational platforms
+Automated English exams and learner progress.
+
+### Language schools
+Teacher-assisted or automated assessment.
+
+### Corporate training
+Employee English assessment and progress tracking.
+
+### Recruitment
+Automated English screening.
+
+### Custom assessment
+Organization-specific rubrics and scoring.
+
+### Embedded API
+Existing LMS, HR or education systems can consume the evaluator without adopting the reference frontend.
+
+---
+
+# Roadmap
+
+## Current MVP
+
+- FastAPI API
+- PostgreSQL persistence
+- written evaluation
+- speaking evaluation
+- Whisper transcription
+- speaking metrics
+- configurable rubrics
+- structured Pydantic responses
+- predefined exam-style rubrics
+- custom rubric foundation
+- cloud deployment compatibility
+
+## Recommended production work
+
+1. **Authentication and authorization**
+2. **Multi-tenancy**
+3. **Object storage for audio**
+4. **Evaluation history and analytics**
+5. **Asynchronous evaluation jobs**
+6. **Structured logging and monitoring**
+7. **LLM usage/cost tracking**
+8. **Dedicated acoustic analysis**
+
+Future speaking analysis can cover:
+
+- pronunciation
+- phoneme accuracy
+- pitch
+- stress
+- rhythm
+- intonation
+- speech rate
+- voice quality
+
+---
+
+## Design principles
+
+1. **LLM-assisted, not LLM-controlled**
+2. **Rubric-driven evaluation**
+3. **Provider flexibility**
+4. **API-first architecture**
+5. **Deterministic application logic**
+6. **Separation of concerns**
+
+---
+
+## License
+
+Add the project's chosen license before public distribution.
+
+## Disclaimer
+
+Third-party examination names, rubrics and proficiency terminology may be protected intellectual property or trademarks. Describe third-party examinations as compatible with or inspired by public criteria unless the appropriate authorization or licensing has been obtained.
