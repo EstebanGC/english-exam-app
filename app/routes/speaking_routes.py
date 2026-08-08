@@ -14,8 +14,6 @@ router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
 
 
 def _normalize_criterion(c: dict) -> dict:
-    """Normaliza la respuesta del LLM al esquema interno."""
-
     if "max_score" in c and "max" not in c:
         c["max"] = c.pop("max_score")
 
@@ -84,22 +82,28 @@ async def evaluate_speaking(
 
         return SpeakingEvaluationOut(
             id=db_eval.id,
-            student_id=db_eval.student_id,
             exam_type=db_eval.exam_type,
-            question=db_eval.question,
+
+            question_text=db_eval.question,
+
             transcript=db_eval.transcript,
+
             overall_score=db_eval.overall_score,
-            band=db_eval.band,
+            overall_band=db_eval.band,
             cefr_level=db_eval.cefr_level,
-            passed=db_eval.passed,
-            criteria_breakdown=[CriterionResult(**c) for c in json.loads(db_eval.criteria_breakdown)],
+
+            approved=db_eval.passed,
+
+            score_breakdown=[
+                CriterionResult(**c)
+                for c in json.loads(db_eval.criteria_breakdown)
+            ],
+
             priority_improvements=json.loads(db_eval.priority_improvements),
-            detailed_feedback=db_eval.detailed_feedback,
-            audio_metrics=json.loads(db_eval.audio_metrics),
-            pronunciation_inference=db_eval.pronunciation_inference,
-            fluency_notes=db_eval.fluency_notes,
-            intonation_notes=db_eval.intonation_notes,
-            created_at=db_eval.created_at
+
+            feedback=db_eval.detailed_feedback,
+
+            evaluated_at=db_eval.created_at
         )
 
     except HTTPException:
