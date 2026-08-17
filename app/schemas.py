@@ -3,6 +3,36 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# ============================================================
+# Authentication
+# ============================================================
+
+class UserRegister(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: Optional[str] = Field(None, max_length=150)
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+    role: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 class RubricCriterion(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     weight: int = Field(..., gt=0, le=100)
