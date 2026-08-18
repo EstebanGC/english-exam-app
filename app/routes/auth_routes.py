@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.utils import get_db
 from app.models import User
 from app.schemas import UserRegister, UserLogin, Token
+from app.utils.auth import get_current_user
 from app.utils.security import (
     hash_password,
     verify_password,
@@ -102,4 +103,16 @@ def login(
     return {
         "access_token": access_token,
         "token_type": "bearer"
+    }
+
+@router.get("/me")
+def get_me(
+    current_user: User = Depends(get_current_user)
+):
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
     }
