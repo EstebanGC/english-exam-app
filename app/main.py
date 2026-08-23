@@ -19,7 +19,7 @@ app.add_middleware(
 
 app.include_router(auth_routes.router)
 app.include_router(evaluation_routes.router)
-app.include_router(history.router)
+app.include_router(history_routes.router)
 app.include_router(rubric_routes.router)
 app.include_router(speaking_routes.router)
 
