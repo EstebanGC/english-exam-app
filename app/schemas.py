@@ -78,6 +78,12 @@ class EvaluationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class VocabularySuggestion(BaseModel):
+    used: str
+    suggestion: str
+    reason: Optional[str] = None
+
+
 class SpeakingEvaluationOut(BaseModel):
     id: int
     external_user_id: Optional[str] = None
@@ -92,6 +98,7 @@ class SpeakingEvaluationOut(BaseModel):
     approved: bool
     feedback: Optional[str] = None
     score_breakdown: Optional[List[CriterionResult]] = None
+    vocabulary_suggestions: Optional[List[VocabularySuggestion]] = None
     transcript: Optional[str] = None
     priority_improvements: Optional[List[str]] = None
     model_used: Optional[str] = None
@@ -150,3 +157,4 @@ class HistorySummary(BaseModel):
     total_speaking_evaluations: int
     average_score: Optional[float] = None
     average_speaking_score: Optional[float] = None
+

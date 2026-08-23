@@ -1,6 +1,3 @@
-"""
-Servicio de evaluacion de speaking usando transcripcion enriquecida + Groq LLM.
-"""
 import os
 import json
 from typing import Dict, Any, List
@@ -10,7 +7,7 @@ from app.services.whisper_transcriber import TranscriptionResult
 
 class SpeakingEvaluator:
     """
-    Evaluador hibrido: Whisper (Groq) para STT + LLM (Groq) para evaluacion.
+    Hybrid evaluator: Whisper (Groq) para STT + LLM (Groq) for evaluation.
     """
 
     def __init__(self):
@@ -119,6 +116,13 @@ class SpeakingEvaluator:
         lines.append("4. **Grammar & Vocabulary**: Assess from transcript text quality, but be lenient with spoken English slips.")
         lines.append("5. **Task Response**: Did the speaker answer directly? Did they expand appropriately?")
         lines.append("")
+        lines.append("**VOCABULARY UPGRADE RULE**:")
+        lines.append("Scan the transcript for basic, repetitive, informal, or vague words/phrases the speaker leaned on")
+        lines.append("(e.g. 'good', 'bad', 'nice', 'very [adjective]', 'a lot of', 'stuff', 'things', 'said').")
+        lines.append("For each one, suggest a more precise, higher-register alternative that fits the exam context,")
+        lines.append("and briefly explain why it's stronger. Pick 3-6 of the most impactful swaps — don't list minor filler words.")
+        lines.append("Only suggest words that actually appear in the transcript; never invent words the speaker didn't say.")
+        lines.append("")
         lines.append("## OUTPUT FORMAT (JSON)")
         lines.append("Return ONLY a JSON object with this exact structure:")
         lines.append("")
@@ -135,6 +139,13 @@ class SpeakingEvaluator:
         lines.append('      "max_score": <number>,')
         lines.append('      "weight": <percentage>,')
         lines.append('      "feedback": "<specific feedback>"')
+        lines.append('    }')
+        lines.append('  ],')
+        lines.append('  "vocabulary_suggestions": [')
+        lines.append('    {')
+        lines.append('      "used": "<word or phrase the speaker actually used>",')
+        lines.append('      "suggestion": "<a stronger, more precise alternative>",')
+        lines.append('      "reason": "<short explanation of why it sounds more natural/professional>"')
         lines.append('    }')
         lines.append('  ],')
         lines.append('  "priority_improvements": ["<area 1>", "<area 2>", "<area 3>"],')

@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.utils import get_db
 from app.models import SpeakingEvaluation, User
-from app.schemas import SpeakingEvaluationOut, CriterionResult
+from app.schemas import SpeakingEvaluationOut, CriterionResult, VocabularySuggestion
 from app.services.whisper_transcriber import WhisperTranscriber
 from app.services.speaking_evaluator import SpeakingEvaluator
 from app.utils.auth import get_current_user
@@ -58,6 +58,8 @@ async def evaluate_speaking(
         raw_breakdown = evaluation.get("criteria_breakdown", [])
         normalized_breakdown = [_normalize_criterion(c) for c in raw_breakdown]
 
+        vocabulary_suggestions = evaluation.get("vocabulary_suggestions", [])
+
         db_eval = SpeakingEvaluation(
             user_id=current_user.id,
             student_id=student_id,
@@ -100,6 +102,10 @@ async def evaluate_speaking(
             score_breakdown=[
                 CriterionResult(**c)
                 for c in json.loads(db_eval.criteria_breakdown)
+            ],
+
+            vocabulary_suggestions=[
+                VocabularySuggestion(**v) for v in vocabulary_suggestions
             ],
 
             priority_improvements=json.loads(db_eval.priority_improvements),
