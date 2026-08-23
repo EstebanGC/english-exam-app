@@ -1,115 +1,77 @@
-import os
-import json
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Optional
- 
+from sqlalchemy import func
+from typing import List
+
 from app.utils import get_db
-from app.models import SpeakingEvaluation, User
-from app.schemas import SpeakingEvaluationOut, CriterionResult
-from app.services.whisper_transcriber import WhisperTranscriber
-from app.services.speaking_evaluator import SpeakingEvaluator
+from app.models import Evaluation, SpeakingEvaluation, User
+from app.schemas import EvaluationHistoryItem, SpeakingEvaluationHistoryItem, HistorySummary
 from app.utils.auth import get_current_user
- 
-router = APIRouter(prefix="/evaluate-speaking", tags=["speaking"])
- 
- 
-def _normalize_criterion(c: dict) -> dict:
-    if "max_score" in c and "max" not in c:
-        c["max"] = c.pop("max_score")
- 
-    if "feedback" in c and "comment" not in c:
-        c["comment"] = c.pop("feedback")
- 
-    return c
- 
- 
-@router.post("", response_model=SpeakingEvaluationOut)
-async def evaluate_speaking(
-    audio: UploadFile = File(..., description="Audio file (webm, mp3, wav, etc.)"),
-    question: str = Form(..., description="Exam question/prompt"),
-    exam_type: str = Form(..., description="Exam type: KET, FCE, or IELTS"),
-    student_id: Optional[str] = Form(None, description="Optional student identifier"),
+
+router = APIRouter(prefix="/history", tags=["history"])
+
+
+@router.get("/evaluations", response_model=List[EvaluationHistoryItem])
+def get_evaluation_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    exam_type = exam_type.upper().strip()
-    if exam_type not in {"KET", "FCE", "IELTS"}:
-        raise HTTPException(status_code=400, detail="Invalid exam_type. Must be one of: KET, FCE, IELTS")
- 
-    audio_bytes = await audio.read()
-    if len(audio_bytes) < 100:
-        raise HTTPException(status_code=400, detail="Audio file too small or empty")
- 
-    max_size = 25 * 1024 * 1024
-    if len(audio_bytes) > max_size:
-        raise HTTPException(status_code=400, detail=f"Audio file too large: {len(audio_bytes)/(1024*1024):.1f}MB. Max: 25MB")
- 
-    try:
-        transcriber = WhisperTranscriber()
-        transcription = await transcriber.transcribe(audio_bytes, filename=audio.filename)
- 
-        if not transcription.text or transcription.text.strip() == "":
-            raise HTTPException(status_code=400, detail="Could not transcribe audio. Please speak clearly and try again.")
- 
-        evaluator = SpeakingEvaluator()
-        evaluation = evaluator.evaluate(question=question, transcription=transcription, exam_type=exam_type)
- 
-        raw_breakdown = evaluation.get("criteria_breakdown", [])
-        normalized_breakdown = [_normalize_criterion(c) for c in raw_breakdown]
- 
-        db_eval = SpeakingEvaluation(
-            user_id=current_user.id,
-            student_id=student_id,
-            exam_type=exam_type,
-            question=question,
-            audio_data=audio_bytes,
-            audio_filename=audio.filename,
-            transcript=transcription.text,
-            overall_score=evaluation.get("overall_score", 0),
-            band=evaluation.get("band", ""),
-            cefr_level=evaluation.get("cefr_level", ""),
-            passed=evaluation.get("passed", False),
-            criteria_breakdown=json.dumps(normalized_breakdown),
-            priority_improvements=json.dumps(evaluation.get("priority_improvements", [])),
-            detailed_feedback=evaluation.get("detailed_feedback", ""),
-            audio_metrics=json.dumps(evaluation.get("audio_metrics", {})),
-            pronunciation_inference=evaluation.get("pronunciation_inference", ""),
-            fluency_notes=evaluation.get("fluency_notes", ""),
-            intonation_notes=evaluation.get("intonation_notes", "")
-        )
- 
-        db.add(db_eval)
-        db.commit()
-        db.refresh(db_eval)
- 
-        return SpeakingEvaluationOut(
-            id=db_eval.id,
-            exam_type=db_eval.exam_type,
- 
-            question_text=db_eval.question,
- 
-            transcript=db_eval.transcript,
- 
-            overall_score=db_eval.overall_score,
-            overall_band=db_eval.band,
-            cefr_level=db_eval.cefr_level,
- 
-            approved=db_eval.passed,
- 
-            score_breakdown=[
-                CriterionResult(**c)
-                for c in json.loads(db_eval.criteria_breakdown)
-            ],
- 
-            priority_improvements=json.loads(db_eval.priority_improvements),
- 
-            feedback=db_eval.detailed_feedback,
- 
-            evaluated_at=db_eval.created_at
-        )
- 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+    """
+    Returns the authenticated user's written-response evaluation history,
+    most recent first.
+    """
+    return (
+        db.query(Evaluation)
+        .filter(Evaluation.user_id == current_user.id)
+        .order_by(Evaluation.created_at.desc())
+        .all()
+    )
+
+
+@router.get("/speaking", response_model=List[SpeakingEvaluationHistoryItem])
+def get_speaking_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns the authenticated user's speaking evaluation history,
+    most recent first.
+    """
+    return (
+        db.query(SpeakingEvaluation)
+        .filter(SpeakingEvaluation.user_id == current_user.id)
+        .order_by(SpeakingEvaluation.created_at.desc())
+        .all()
+    )
+
+
+@router.get("/summary", response_model=HistorySummary)
+def get_history_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Quick stats for a progress dashboard: totals and averages.
+    """
+    eval_count = db.query(func.count(Evaluation.id)).filter(
+        Evaluation.user_id == current_user.id
+    ).scalar() or 0
+
+    eval_avg = db.query(func.avg(Evaluation.score)).filter(
+        Evaluation.user_id == current_user.id
+    ).scalar()
+
+    speaking_count = db.query(func.count(SpeakingEvaluation.id)).filter(
+        SpeakingEvaluation.user_id == current_user.id
+    ).scalar() or 0
+
+    speaking_avg = db.query(func.avg(SpeakingEvaluation.overall_score)).filter(
+        SpeakingEvaluation.user_id == current_user.id
+    ).scalar()
+
+    return HistorySummary(
+        total_evaluations=eval_count,
+        total_speaking_evaluations=speaking_count,
+        average_score=round(float(eval_avg), 2) if eval_avg is not None else None,
+        average_speaking_score=round(float(speaking_avg), 2) if speaking_avg is not None else None,
+    )
