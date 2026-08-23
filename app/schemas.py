@@ -118,3 +118,35 @@ class RubricTemplateOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class EvaluationHistoryItem(BaseModel):
+    id: int
+    question_text: str
+    score: float
+    max_score: int
+    passing_score: int
+    approved: bool
+    model_used: Optional[str] = None
+    evaluated_at: Optional[datetime] = None
+ 
+    model_config = ConfigDict(from_attributes=True)
+ 
+ 
+class SpeakingEvaluationHistoryItem(BaseModel):
+    id: int
+    exam_type: str
+    question: str
+    overall_score: float
+    band: Optional[str] = None
+    cefr_level: Optional[str] = None
+    passed: bool
+    created_at: Optional[datetime] = None
+ 
+    model_config = ConfigDict(from_attributes=True)
+ 
+ 
+class HistorySummary(BaseModel):
+    total_evaluations: int
+    total_speaking_evaluations: int
+    average_score: Optional[float] = None
+    average_speaking_score: Optional[float] = None
