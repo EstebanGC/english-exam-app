@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from app.routes import auth_routes, evaluation_routes, history, rubric_routes, speaking_routes
+from app.routes import auth_routes, evaluation_routes, history_routes, rubric_routes, speaking_routes
 
 app = FastAPI()
 
