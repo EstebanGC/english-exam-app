@@ -24,6 +24,8 @@ class UserOut(BaseModel):
     name: Optional[str] = None
     role: str
     is_active: bool
+    school_name: Optional[str] = None     
+    logo_url: Optional[str] = None   
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
