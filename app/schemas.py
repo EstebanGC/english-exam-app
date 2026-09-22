@@ -28,6 +28,10 @@ class UserOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class UserProfileUpdate(BaseModel):
+    school_name: Optional[str] = Field(None, max_length=150)
+    logo_url: Optional[str] = Field(None, max_length=500)
+    name: Optional[str] = Field(None, max_length=150)
 
 class Token(BaseModel):
     access_token: str
@@ -38,17 +42,14 @@ class RubricCriterion(BaseModel):
     weight: int = Field(..., gt=0, le=100)
     description: Optional[str] = None
 
-
 class Rubric(BaseModel):
     criteria: List[RubricCriterion] = Field(..., min_length=1)
-
 
 class CriterionResult(BaseModel):
     criterion: str
     score: float
     max: float
     comment: Optional[str] = None
-
 
 class EvaluationRequest(BaseModel):
     external_user_id: Optional[str] = None
@@ -60,7 +61,6 @@ class EvaluationRequest(BaseModel):
     rubric: Rubric
     max_score: int = Field(default=100, gt=0)
     passing_score: int = Field(default=60, ge=0)
-
 
 class EvaluationOut(BaseModel):
     id: int
@@ -77,12 +77,10 @@ class EvaluationOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
 class VocabularySuggestion(BaseModel):
     used: str
     suggestion: str
     reason: Optional[str] = None
-
 
 class SpeakingEvaluationOut(BaseModel):
     id: int
@@ -106,14 +104,12 @@ class SpeakingEvaluationOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
 class RubricTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     description: Optional[str] = None
     criteria: List[RubricCriterion] = Field(..., min_length=1)
     max_score: int = Field(default=100, gt=0)
     passing_score: int = Field(default=60, ge=0)
-
 
 class RubricTemplateOut(BaseModel):
     id: int
@@ -138,7 +134,6 @@ class EvaluationHistoryItem(BaseModel):
  
     model_config = ConfigDict(from_attributes=True)
  
- 
 class SpeakingEvaluationHistoryItem(BaseModel):
     id: int
     exam_type: str
@@ -150,7 +145,6 @@ class SpeakingEvaluationHistoryItem(BaseModel):
     created_at: Optional[datetime] = None
  
     model_config = ConfigDict(from_attributes=True)
- 
  
 class HistorySummary(BaseModel):
     total_evaluations: int

@@ -55,6 +55,17 @@ class User(Base):
         server_default=func.now()
     )
 
+    school_name = Column(
+        String(150),
+        nullable=True
+    )
+ 
+    logo_url = Column(
+        String(500),
+        nullable=True
+    )
+    
+
 
 class Evaluation(Base):
     __tablename__ = "evaluations"
